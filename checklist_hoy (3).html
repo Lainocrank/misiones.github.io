@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Checklist — Hoy</title>
+  <style>
+    :root{ --bg:#0f1724; --card:#0b1220; --accent:#7c3aed; --muted:#94a3b8; --glass: rgba(255,255,255,0.04);} 
+    *{box-sizing:border-box;font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071024 0%, #031226 100%);color:#e6eef8}
+    .wrap{max-width:880px;margin:28px auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    h1{font-size:20px;margin:0}
+    p.lead{margin:6px 0 0;color:var(--muted);font-size:13px}
+
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:18px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .btn{background:var(--glass);border:1px solid rgba(255,255,255,0.04);padding:8px 12px;border-radius:10px;color:#e6eef8;cursor:pointer;font-size:13px}
+    .btn.strong{background:linear-gradient(90deg,var(--accent),#5b21b6);box-shadow:0 8px 20px rgba(124,58,237,0.18)}
+    .btn.ghost{background:transparent;border:1px dashed rgba(255,255,255,0.04)}
+
+    form.add{display:flex;gap:8px;margin:12px 0}
+    input.add-input{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+
+    ul.checklist{list-style:none;padding:0;margin:12px 0;display:block}
+    li.item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:8px;margin-bottom:8px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.02)}
+    label{display:flex;align-items:center;gap:12px;flex:1;cursor:pointer}
+    input[type=checkbox]{width:18px;height:18px;border-radius:4px}
+    .text{flex:1}
+    .text p{margin:0}
+    .meta{font-size:12px;color:var(--muted)}
+    .done .text p{opacity:0.6;text-decoration:line-through}
+    .small{font-size:12px;color:var(--muted)}
+
+    .right-actions{display:flex;gap:8px;align-items:center}
+    .icon-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;padding:6px;border-radius:8px}
+    .time-badge{font-size:12px;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.03)}
+
+    .filters{display:flex;gap:8px;margin-top:8px}
+    footer{margin-top:14px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;align-items:center}
+
+    @media(max-width:520px){ header{flex-direction:column;align-items:flex-start;gap:8px} .controls{width:100%;justify-content:flex-start} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Checklist — Hoy</h1>
+        <p class="lead">Marca lo que completes. Los cambios se guardan en tu navegador.</p>
+      </div>
+      <div class="controls">
+        <button id="clearAll" class="btn ghost" title="Limpiar lista">Limpiar</button>
+        <button id="clearDone" class="btn" title="Borrar completados">Borrar completados</button>
+        <button id="markAll" class="btn" title="Marcar todo como hecho">Marcar todo</button>
+        <button id="download" class="btn strong" title="Descargar HTML actualizado">Descargar</button>
+      </div>
+    </header>
+
+    <section class="card">
+      <form id="addForm" class="add" onsubmit="return false;">
+        <input id="newItem" class="add-input" placeholder="Añadir nueva tarea y presiona Enter" autocomplete="off" />
+        <button id="addBtn" class="btn">Añadir</button>
+      </form>
+
+      <div class="filters">
+        <select id="viewFilter" class="btn">
+          <option value="all">Ver: Todas</option>
+          <option value="active">Solo activas</option>
+          <option value="done">Solo completadas</option>
+        </select>
+        <button id="sortTime" class="btn">Ordenar por hora</button>
+      </div>
+
+      <ul id="checklist" class="checklist" aria-live="polite"></ul>
+
+      <footer>
+        <div><span id="count" class="small">0 tareas</span></div>
+        <div class="small">Última guardada: <span id="savedAt">nunca</span></div>
+      </footer>
+    </section>
+
+    <p style="margin-top:10px;color:var(--muted);font-size:13px">Sugerencia: puedes editar un ítem haciendo doble clic sobre su texto. También puedes añadir la hora entre paréntesis, p.ej. "Reunión (8:00)".</p>
+  </div>
+
+  <script>
+    // Local storage key
+    const STORAGE_KEY = 'vibrar_checklist_v1';
+
+    // Default items (based on tu plan de hoy)
+    const defaultItems = [
+      {text: 'Poner la lavadora / lavar ropa (2:30 – 3:30)', done: false, time:'14:30'},
+      {text: 'Ordenar cuarto básico (3:30 – 4:30)', done: false, time:'15:30'},
+      {text: 'Limpiar cama, piso y escritorio (3:30 – 4:30)', done: false, time:'15:45'},
+      {text: 'Redactar 1 guion para vibrarstudio (4:30 – 6:00)', done: false, time:'16:30'},
+      {text: 'Descanso y comer algo ligero (6:00 – 7:00)', done: false, time:'18:00'},
+      {text: 'Lista de pendientes: urgentes vs. importantes (7:00 – 7:45)', done: false, time:'19:00'},
+      {text: 'Prepararme para reunión (7:45 – 8:00)', done: false, time:'19:45'},
+      {text: 'Reunión virtual 1 (8:00)', done: false, time:'20:00'},
+      {text: 'Tiempo libre / continuar con guiones (9:00 – 10:30)', done: false, time:'21:00'},
+      {text: 'Prepararme para reunión (10:30 – 11:00)', done: false, time:'22:30'},
+      {text: 'Reunión virtual 2 (11:00)', done: false, time:'23:00'}
+    ];
+
+    // State
+    let items = [];
+
+    // Elements
+    const checklist = document.getElementById('checklist');
+    const addForm = document.getElementById('addForm');
+    const newItemInput = document.getElementById('newItem');
+    const addBtn = document.getElementById('addBtn');
+    const countLabel = document.getElementById('count');
+    const savedAt = document.getElementById('savedAt');
+    const clearAllBtn = document.getElementById('clearAll');
+    const clearDoneBtn = document.getElementById('clearDone');
+    const markAllBtn = document.getElementById('markAll');
+    const downloadBtn = document.getElementById('download');
+    const viewFilter = document.getElementById('viewFilter');
+    const sortTimeBtn = document.getElementById('sortTime');
+
+    function nowISO(){ return new Date().toLocaleString(); }
+
+    function load(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(raw){ items = JSON.parse(raw); }
+        else { items = defaultItems.slice(); save(); }
+      }catch(e){ items = defaultItems.slice(); }
+    }
+
+    function save(){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      savedAt.textContent = nowISO();
+    }
+
+    function render(){
+      checklist.innerHTML = '';
+      const filter = viewFilter.value;
+      const list = items.filter(it => filter === 'all' ? true : (filter === 'done' ? it.done : !it.done));
+
+      if(list.length === 0){ checklist.innerHTML = '<li class="small" style="padding:12px">No hay tareas en esta vista.</li>'; }
+
+      list.forEach((it, idx) =>{
+        const li = document.createElement('li'); li.className = 'item' + (it.done ? ' done' : '');
+
+        const label = document.createElement('label');
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = it.done;
+        cb.addEventListener('change', ()=>{ items[idx].done = cb.checked; save(); render(); });
+
+        const textWrap = document.createElement('div'); textWrap.className='text';
+        const p = document.createElement('p'); p.textContent = it.text;
+        p.title = 'Doble clic para editar';
+        p.addEventListener('dblclick', ()=>{ startEdit(idx, p); });
+
+        const meta = document.createElement('div'); meta.className='meta';
+        meta.textContent = it.time ? ('Hora: ' + it.time) : '';
+
+        textWrap.appendChild(p);
+        textWrap.appendChild(meta);
+
+        label.appendChild(cb);
+        label.appendChild(textWrap);
+
+        const right = document.createElement('div'); right.className='right-actions';
+        const editBtn = document.createElement('button'); editBtn.className='icon-btn'; editBtn.innerHTML='✏️';
+        editBtn.title='Editar'; editBtn.addEventListener('click', (e)=>{ e.preventDefault(); startEdit(idx, p); });
+        const delBtn = document.createElement('button'); delBtn.className='icon-btn'; delBtn.innerHTML='🗑️';
+        delBtn.title='Eliminar'; delBtn.addEventListener('click', ()=>{ items.splice(idx,1); save(); render(); });
+
+        right.appendChild(editBtn); right.appendChild(delBtn);
+
+        li.appendChild(label);
+        li.appendChild(right);
+        checklist.appendChild(li);
+      });
+
+      countLabel.textContent = items.length + ' tareas (' + items.filter(i=>i.done).length + ' completadas)';
+    }
+
+    function startEdit(index, pElement){
+      const old = items[index].text;
+      const input = document.createElement('input'); input.type='text'; input.value = old; input.className='add-input';
+      pElement.replaceWith(input); input.focus();
+      input.addEventListener('blur', ()=>finishEdit());
+      input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ finishEdit(); } if(e.key === 'Escape'){ cancelEdit(); } });
+
+      function finishEdit(){ const v = input.value.trim(); if(v.length){ items[index].text = v; parseTimeFromText(items[index]); save(); render(); } else { items.splice(index,1); save(); render(); } }
+      function cancelEdit(){ items[index].text = old; render(); }
+    }
+
+    function parseTimeFromText(item){
+      // Simple heuristic: busca (HH:MM) o (H:MM) en el texto
+      const m = item.text.match(/\((\d{1,2}:\d{2})\)/);
+      if(m){ item.time = m[1]; } else { item.time = item.time || ''; }
+    }
+
+    // Add
+    function addNew(text){ const t = text.trim(); if(!t) return; const it = {text:t, done:false, time:''}; parseTimeFromText(it); items.push(it); save(); render(); }
+
+    addForm.addEventListener('submit', (e)=>{ e.preventDefault(); addNew(newItemInput.value); newItemInput.value=''; });
+    addBtn.addEventListener('click', ()=>{ addNew(newItemInput.value); newItemInput.value=''; });
+
+    // Buttons
+    clearAllBtn.addEventListener('click', ()=>{ if(confirm('¿Borrar toda la lista?')){ items = []; save(); render(); } });
+    clearDoneBtn.addEventListener('click', ()=>{ if(confirm('¿Borrar ítems completados?')){ items = items.filter(i=>!i.done); save(); render(); } });
+    markAllBtn.addEventListener('click', ()=>{ items.forEach(i=>i.done=true); save(); render(); });
+
+    viewFilter.addEventListener('change', render);
+
+    sortTimeBtn.addEventListener('click', ()=>{
+      // Ordena por campo time si existe, si no queda al final
+      items.sort((a,b)=>{
+        if(!a.time && !b.time) return 0;
+        if(!a.time) return 1; if(!b.time) return -1;
+        return a.time.localeCompare(b.time);
+      }); save(); render();
+    });
+
+    // Download current HTML (snapshot) — useful para guardar localmente
+    downloadBtn.addEventListener('click', ()=>{
+      const blob = new Blob([document.documentElement.outerHTML],{type:'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'checklist_hoy.html'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+
+    // Init
+    load(); render();
+  </script>
+</body>
+</html>
